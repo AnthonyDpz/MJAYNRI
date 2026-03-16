@@ -143,9 +143,9 @@ async function streamResponse(aiEl) {
     for (const line of lines) {
       if (line.startsWith('event: chunk')) continue;
       if (line.startsWith('data: ') && !line.includes('"finish"')) {
-        const text = line.slice(6); // Retirer "data: "
-        fullContent += text;
-        bubble.textContent = fullContent;
+        fullContent += line.slice(6); // Retirer le préfixe "data: "
+        // Re-rendu markdown à chaque chunk (inclut <think> + formatage)
+        bubble.replaceChildren(renderMarkdown(fullContent));
         scrollToBottom();
       }
       if (line.startsWith('event: done')) {
