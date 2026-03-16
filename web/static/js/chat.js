@@ -1,0 +1,266 @@
+/**
+ * chat.js — Logique frontend du chat MJAYNRI
+ *
+ * Responsabilités :
+ *  1. Envoi des messages via POST /api/chat (fetch + ReadableStream)
+ *  2. Affichage des réponses en streaming (SSE côté serveur)
+ *  3. Mise à jour du badge de connexion via GET /api/status
+ *  4. Auto-resize du textarea, raccourcis clavier
+ *
+ * Pas de framework — vanilla JS ES2020+.
+ * Aucune dépendance externe.
+ */
+
+'use strict';
+
+// ── Éléments DOM ──────────────────────────────────────────────────────────────
+const chatMessages = document.getElementById('chat-messages');
+const chatForm     = document.getElementById('chat-form');
+const textarea     = document.getElementById('chat-textarea');
+const sendBtn      = document.getElementById('send-btn');
+const typingEl     = document.getElementById('chat-typing');
+const statusDot    = document.getElementById('status-dot');
+const statusLabel  = document.getElementById('status-label');
+const refreshBtn   = document.getElementById('refresh-btn');
+
+/** Historique de la conversation envoyé à l'API à chaque tour. */
+const conversation = [];
+
+/** Indique si un streaming est en cours (bloque l'envoi concurrent). */
+let isStreaming = false;
+
+// ── Initialisation ────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  setupTextarea();
+  setupForm();
+  setupRefresh();
+  pollStatus(); // Premier check du statut au chargement
+});
+
+// ── Textarea auto-resize ──────────────────────────────────────────────────────
+
+function setupTextarea() {
+  textarea.addEventListener('input', autoResize);
+  textarea.addEventListener('keydown', (e) => {
+    // Entrée seule → envoyer ; Maj+Entrée → saut de ligne
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!isStreaming) submitMessage();
+    }
+  });
+}
+
+/** Ajuste la hauteur du textarea à son contenu (max 160px défini en CSS). */
+function autoResize() {
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
+}
+
+// ── Envoi du formulaire ───────────────────────────────────────────────────────
+
+function setupForm() {
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!isStreaming) submitMessage();
+  });
+}
+
+async function submitMessage() {
+  const content = textarea.value.trim();
+  if (!content) return;
+
+  // Effacer et réinitialiser la saisie
+  textarea.value = '';
+  autoResize();
+  setInputDisabled(true);
+
+  // Supprimer l'écran de bienvenue au premier message
+  const welcome = document.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  // Ajouter le message utilisateur à l'historique
+  conversation.push({ role: 'user', content });
+  appendMessage('user', content);
+
+  // Préparer la bulle de réponse IA (sera remplie en streaming)
+  const aiMessageEl = appendMessage('ai', '');
+  aiMessageEl.querySelector('.message__bubble').classList.add('streaming');
+  showTyping(true);
+
+  try {
+    await streamResponse(aiMessageEl);
+  } catch (err) {
+    showError(aiMessageEl, err.message);
+  } finally {
+    aiMessageEl.querySelector('.message__bubble').classList.remove('streaming');
+    showTyping(false);
+    setInputDisabled(false);
+    textarea.focus();
+  }
+}
+
+// ── Streaming de la réponse ───────────────────────────────────────────────────
+
+/**
+ * Envoie la conversation à POST /api/chat et affiche la réponse en streaming.
+ * Utilise fetch + ReadableStream pour lire le flux SSE sans EventSource
+ * (EventSource ne supporte pas la méthode POST).
+ *
+ * @param {HTMLElement} aiEl - Élément du message IA à remplir
+ */
+async function streamResponse(aiEl) {
+  isStreaming = true;
+  const bubble = aiEl.querySelector('.message__bubble');
+  let fullContent = '';
+
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: conversation }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  // Lire le flux SSE ligne par ligne
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // Garder la ligne incomplète en buffer
+
+    for (const line of lines) {
+      if (line.startsWith('event: chunk')) continue;
+      if (line.startsWith('data: ') && !line.includes('"finish"')) {
+        const text = line.slice(6); // Retirer "data: "
+        fullContent += text;
+        bubble.textContent = fullContent;
+        scrollToBottom();
+      }
+      if (line.startsWith('event: done')) {
+        isStreaming = false;
+        // Enregistrer la réponse complète dans l'historique
+        conversation.push({ role: 'assistant', content: fullContent });
+        return;
+      }
+      if (line.startsWith('event: error')) {
+        isStreaming = false;
+        throw new Error('Erreur de streaming IA');
+      }
+    }
+  }
+
+  isStreaming = false;
+  if (fullContent) {
+    conversation.push({ role: 'assistant', content: fullContent });
+  }
+}
+
+// ── Helpers DOM ───────────────────────────────────────────────────────────────
+
+/**
+ * Crée et ajoute une bulle de message dans la zone de chat.
+ * @param {'user'|'ai'|'error'} role
+ * @param {string} content - Texte initial (peut être vide pour le streaming)
+ * @returns {HTMLElement} L'élément message créé
+ */
+function appendMessage(role, content) {
+  const msg = document.createElement('div');
+  msg.className = `message message--${role}`;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'message__avatar';
+  avatar.textContent = role === 'user' ? 'V' : '⚔';
+  avatar.setAttribute('aria-hidden', 'true');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message__bubble';
+  bubble.textContent = content;
+
+  msg.appendChild(avatar);
+  msg.appendChild(bubble);
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+
+  return msg;
+}
+
+/** Affiche un message d'erreur dans la bulle IA. */
+function showError(aiEl, message) {
+  aiEl.className = 'message message--error';
+  aiEl.querySelector('.message__bubble').textContent = '⚠ Erreur : ' + message;
+}
+
+/** Active ou désactive le formulaire de saisie pendant le streaming. */
+function setInputDisabled(disabled) {
+  textarea.disabled = disabled;
+  sendBtn.disabled = disabled;
+}
+
+/** Affiche ou masque l'indicateur "l'IA écrit…". */
+function showTyping(visible) {
+  typingEl.hidden = !visible;
+  if (visible) scrollToBottom();
+}
+
+/** Fait défiler la zone des messages vers le bas. */
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ── Badge de connexion ────────────────────────────────────────────────────────
+
+/** Interroge /api/status et met à jour le badge. */
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    updateBadge(data);
+  } catch (_) {
+    // Silencieux — l'état déjà affiché reste valide
+  }
+}
+
+/**
+ * Met à jour le badge de connexion avec les données reçues.
+ * @param {{ color: string, provider: string, model: string }} data
+ */
+function updateBadge(data) {
+  // Retirer toutes les classes de couleur existantes
+  statusDot.className = 'connection-badge__dot';
+  statusDot.classList.add(`status-${data.color}`);
+
+  const label = data.model
+    ? `${data.provider} — ${data.model}`
+    : data.provider;
+  statusLabel.textContent = label;
+}
+
+function setupRefresh() {
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.classList.add('spinning');
+    try {
+      const res = await fetch('/api/refresh', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        updateBadge(data);
+      }
+    } catch (_) {
+      // Silencieux
+    } finally {
+      refreshBtn.classList.remove('spinning');
+    }
+  });
+}
+
+// Rafraîchissement automatique du statut toutes les 30 secondes
+setInterval(pollStatus, 30_000);

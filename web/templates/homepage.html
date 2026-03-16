@@ -1,0 +1,43 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="chat-container">
+
+  <!-- Zone des messages -->
+  <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Conversation">
+    <div class="chat-welcome">
+      <div class="chat-welcome__icon">⚔</div>
+      <h2 class="chat-welcome__title">Bienvenue dans MJAYNRI</h2>
+      <p class="chat-welcome__text">
+        Votre Maître de Jeu IA est prêt. Posez une question, décrivez une scène,
+        ou demandez de l'aide pour votre aventure.
+      </p>
+    </div>
+  </div>
+
+  <!-- Indicateur "l'IA écrit…" -->
+  <div class="chat-typing" id="chat-typing" hidden>
+    <span class="chat-typing__dot"></span>
+    <span class="chat-typing__dot"></span>
+    <span class="chat-typing__dot"></span>
+    <span class="chat-typing__label">L'IA rédige…</span>
+  </div>
+
+  <!-- Zone de saisie -->
+  <form class="chat-input" id="chat-form" autocomplete="off">
+    <label for="chat-textarea" class="sr-only">Votre message</label>
+    <textarea
+      id="chat-textarea"
+      class="chat-input__textarea"
+      placeholder="Écrivez votre message… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
+      rows="1"
+      maxlength="4096"
+      aria-label="Message à envoyer"
+    ></textarea>
+    <button type="submit" class="chat-input__send" id="send-btn" aria-label="Envoyer">
+      <span class="chat-input__send-icon">➤</span>
+    </button>
+  </form>
+
+</div>
+{{end}}

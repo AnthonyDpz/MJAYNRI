@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ dev, 'feature/**', 'fix/**' ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    name: Tests & Qualité
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Vérification du module
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Tests avec race detector
+        run: go test -race -count=1 -timeout=60s ./...
+
+      - name: Couverture de code
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Formatage gofmt
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "Fichiers non formatés :"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+  # Job de validation pour les PR vers main
+  gate:
+    name: Gate main
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'main'
+    steps:
+      - name: Validation OK
+        run: echo "Tous les tests sont verts. Merge vers main autorisé apres validation utilisateur."
