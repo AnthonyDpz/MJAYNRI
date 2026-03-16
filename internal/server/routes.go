@@ -16,6 +16,7 @@ import (
 //	POST /api/chat      → Envoi d'un message et réponse streaming (SSE)
 //	GET  /api/models    → Liste des providers + modèles disponibles (JSON)
 //	POST /api/refresh   → Force un re-scan des providers locaux
+//	POST /api/switch    → Change le provider/modèle actif à chaud
 func registerRoutes(engine *gin.Engine, h *handlers.Handler) {
 	// Assets statiques (CSS, JS) — servis depuis les fichiers embarqués (embed.FS)
 	engine.StaticFS("/static", h.StaticFiles())
@@ -30,5 +31,6 @@ func registerRoutes(engine *gin.Engine, h *handlers.Handler) {
 		api.POST("/chat", h.Chat)
 		api.GET("/models", h.Models)
 		api.POST("/refresh", h.Refresh)
+		api.POST("/switch", h.Switch)
 	}
 }

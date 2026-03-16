@@ -14,11 +14,13 @@
       <span class="app-header__name">{{.AppName}}</span>
       <span class="app-header__subtitle">Maître de Jeu IA</span>
     </div>
-    <!-- Badge de connexion IA — mis à jour dynamiquement par /api/status -->
-    <div class="connection-badge" id="connection-badge" data-status="{{.Status.Raw}}">
+    <!-- Badge de connexion IA + sélecteur de modèle -->
+    <div class="connection-badge" id="connection-badge">
       <span class="connection-badge__dot {{.Status.Color}}" id="status-dot"></span>
+      <!-- Quand un seul modèle : label simple. Quand plusieurs : select apparaît via JS -->
       <span class="connection-badge__label" id="status-label">{{.Status.Label}}</span>
-      <button class="connection-badge__refresh" id="refresh-btn" title="Rafraîchir la connexion">↻</button>
+      <select class="connection-badge__select" id="model-select" aria-label="Sélectionner le modèle IA" hidden></select>
+      <button class="connection-badge__refresh" id="refresh-btn" title="Rafraîchir la détection des providers">↻</button>
     </div>
   </header>
 

@@ -2,7 +2,9 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 )
 
 // Manager gère le provider LLM actif et permet de le changer à chaud depuis l'IHM.
@@ -60,10 +62,11 @@ func (m *Manager) StatusInfo() ProviderInfo {
 	}
 
 	return ProviderInfo{
-		Name:    m.active.Name(),
-		BaseURL: m.active.BaseURL(),
-		Models:  models,
-		Status:  m.status,
+		Name:        m.active.Name(),
+		BaseURL:     m.active.BaseURL(),
+		ActiveModel: m.active.ModelName(),
+		Models:      models,
+		Status:      m.status,
 	}
 }
 
@@ -85,6 +88,59 @@ func (m *Manager) Available() []DetectedProvider {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.available
+}
+
+// Switch change le provider actif ET le modèle à chaud, sans redémarrer le serveur.
+//
+// Règles :
+//   - providerName doit correspondre exactement à Provider.Name() d'un provider disponible.
+//   - modelName doit figurer dans la liste Models de ce provider.
+//
+// Un nouveau Provider est instancié avec le modèle demandé afin que ModelName() reflète
+// immédiatement le choix de l'utilisateur sans affecter les autres providers en mémoire.
+func (m *Manager) Switch(providerName, modelName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, dp := range m.available {
+		if dp.Provider.Name() != providerName {
+			continue
+		}
+
+		// Vérifier que le modèle demandé est bien disponible sur ce provider
+		found := false
+		for _, mod := range dp.Models {
+			if mod == modelName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("modèle %q non disponible sur %s", modelName, providerName)
+		}
+
+		// Créer un nouveau provider avec le modèle sélectionné.
+		// On récupère l'URL de base depuis le provider existant pour éviter tout couplage
+		// avec la configuration — le Manager n'a pas besoin de connaître les URLs directement.
+		baseURL := dp.Provider.BaseURL()
+		const chatTimeout = 120 * time.Second
+
+		var newProvider Provider
+		switch providerName {
+		case "Ollama":
+			newProvider = NewOllamaProvider(baseURL, modelName, chatTimeout)
+		case "LM Studio":
+			newProvider = NewLMStudioProvider(baseURL, modelName, chatTimeout)
+		default:
+			return fmt.Errorf("provider %q : type inconnu, impossible de recréer l'instance", providerName)
+		}
+
+		m.active = newProvider
+		m.status = StatusConnected
+		return nil
+	}
+
+	return fmt.Errorf("provider %q non disponible", providerName)
 }
 
 // Refresh re-sonde les providers et met à jour l'état. Appelé périodiquement

@@ -49,8 +49,9 @@ const (
 // ProviderInfo contient les métadonnées d'un provider détecté,
 // destinées à l'affichage dans l'IHM.
 type ProviderInfo struct {
-	Name    string   `json:"name"`
-	BaseURL string   `json:"base_url"`
-	Models  []string `json:"models"`
-	Status  Status   `json:"status"`
+	Name        string   `json:"name"`
+	BaseURL     string   `json:"base_url"`
+	ActiveModel string   `json:"active_model"` // Modèle actuellement sélectionné
+	Models      []string `json:"models"`
+	Status      Status   `json:"status"`
 }

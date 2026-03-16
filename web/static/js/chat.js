@@ -21,6 +21,7 @@ const sendBtn      = document.getElementById('send-btn');
 const typingEl     = document.getElementById('chat-typing');
 const statusDot    = document.getElementById('status-dot');
 const statusLabel  = document.getElementById('status-label');
+const modelSelect  = document.getElementById('model-select');
 const refreshBtn   = document.getElementById('refresh-btn');
 
 /** Historique de la conversation envoyé à l'API à chaque tour. */
@@ -34,7 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTextarea();
   setupForm();
   setupRefresh();
-  pollStatus(); // Premier check du statut au chargement
+  setupModelSelect();
+  pollStatus();        // Premier check du statut au chargement
+  loadModelSelector(); // Charger la liste des modèles et afficher le select si nécessaire
 });
 
 // ── Textarea auto-resize ──────────────────────────────────────────────────────
@@ -216,7 +219,88 @@ function scrollToBottom() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-// ── Badge de connexion ────────────────────────────────────────────────────────
+// ── Badge de connexion + sélecteur de modèle ─────────────────────────────────
+
+/**
+ * Interroge /api/models et peuple le <select> groupé par provider.
+ * Si un seul modèle total est disponible, affiche le label statique.
+ * Toutes les options sont créées via createElement — aucun innerHTML.
+ */
+async function loadModelSelector() {
+  try {
+    const res = await fetch('/api/models');
+    if (!res.ok) return;
+    const data = await res.json();
+    const providers = data.providers || [];
+
+    const totalModels = providers.reduce((sum, p) => sum + (p.models?.length || 0), 0);
+
+    if (totalModels <= 1) {
+      showSelectOrLabel(false);
+      return;
+    }
+
+    // Vider le select proprement (sans innerHTML)
+    modelSelect.replaceChildren();
+
+    const currentVal = `${modelSelect.dataset.currentProvider || ''}|${modelSelect.dataset.currentModel || ''}`;
+
+    providers.forEach(p => {
+      const group = document.createElement('optgroup');
+      group.label = p.provider;
+
+      (p.models || []).forEach(model => {
+        const opt = document.createElement('option');
+        opt.value = `${p.provider}|${model}`;
+        opt.textContent = model;
+        if (opt.value === currentVal) opt.selected = true;
+        group.appendChild(opt);
+      });
+
+      modelSelect.appendChild(group);
+    });
+
+    showSelectOrLabel(true);
+  } catch (_) {
+    // Silencieux — le label statique reste affiché
+  }
+}
+
+/**
+ * Bascule entre le label statique et le <select>.
+ * @param {boolean} useSelect
+ */
+function showSelectOrLabel(useSelect) {
+  statusLabel.hidden = useSelect;
+  modelSelect.hidden = !useSelect;
+}
+
+/**
+ * Met à jour le badge de connexion (point coloré + label ou select).
+ * @param {{ color: string, provider: string, model: string }} data
+ */
+function updateBadge(data) {
+  // Point coloré
+  statusDot.className = 'connection-badge__dot';
+  statusDot.classList.add(`status-${data.color}`);
+
+  // Label (visible si déconnecté ou un seul modèle)
+  statusLabel.textContent = data.model
+    ? `${data.provider} — ${data.model}`
+    : data.provider;
+
+  // Mémoriser pour la prochaine reconstruction du select
+  modelSelect.dataset.currentModel    = data.model    || '';
+  modelSelect.dataset.currentProvider = data.provider || '';
+
+  // Synchroniser l'option sélectionnée si le select est visible
+  if (!modelSelect.hidden && data.provider && data.model) {
+    const target = `${data.provider}|${data.model}`;
+    for (const opt of modelSelect.options) {
+      opt.selected = (opt.value === target);
+    }
+  }
+}
 
 /** Interroge /api/status et met à jour le badge. */
 async function pollStatus() {
@@ -231,18 +315,30 @@ async function pollStatus() {
 }
 
 /**
- * Met à jour le badge de connexion avec les données reçues.
- * @param {{ color: string, provider: string, model: string }} data
+ * Écoute les changements du <select> et appelle POST /api/switch.
  */
-function updateBadge(data) {
-  // Retirer toutes les classes de couleur existantes
-  statusDot.className = 'connection-badge__dot';
-  statusDot.classList.add(`status-${data.color}`);
+function setupModelSelect() {
+  modelSelect.addEventListener('change', async () => {
+    const [provider, model] = modelSelect.value.split('|');
+    if (!provider || !model) return;
 
-  const label = data.model
-    ? `${data.provider} — ${data.model}`
-    : data.provider;
-  statusLabel.textContent = label;
+    modelSelect.classList.add('switching');
+    try {
+      const res = await fetch('/api/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, model }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateBadge(data);
+      }
+    } catch (_) {
+      // Silencieux
+    } finally {
+      modelSelect.classList.remove('switching');
+    }
+  });
 }
 
 function setupRefresh() {
@@ -253,6 +349,8 @@ function setupRefresh() {
       if (res.ok) {
         const data = await res.json();
         updateBadge(data);
+        // Recharger la liste des modèles après un refresh (nouveaux providers possibles)
+        await loadModelSelector();
       }
     } catch (_) {
       // Silencieux

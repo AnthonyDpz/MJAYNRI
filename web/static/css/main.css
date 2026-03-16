@@ -142,6 +142,49 @@ body {
 .connection-badge__refresh:hover { color: var(--color-accent); }
 .connection-badge__refresh.spinning { animation: spin 0.8s linear infinite; }
 
+/* ── Sélecteur de modèle dans le badge ───────────────────── */
+.connection-badge__select {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  padding: 0 2px;
+  max-width: 240px;
+  outline: none;
+  /* Flèche custom cohérente avec le thème dark */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  padding-right: 18px;
+}
+
+.connection-badge__select:hover {
+  color: var(--color-text);
+}
+
+/* Les options s'affichent toujours dans le thème système — on force le dark */
+.connection-badge__select option,
+.connection-badge__select optgroup {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.connection-badge__select optgroup {
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* Animation légère quand un switch est en cours */
+.connection-badge__select.switching {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Layout principal ─────────────────────────────────────── */
