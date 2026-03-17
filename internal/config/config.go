@@ -42,13 +42,13 @@ type LLMConfig struct {
 func Load() Config {
 	return Config{
 		Server: ServerConfig{
-			Port:         getEnv("MJAYNRI_PORT", "8080"),
-			ReadTimeout:  getDuration("MJAYNRI_READ_TIMEOUT", 15*time.Second),
+			Port:        getEnv("MJAYNRI_PORT", "8080"),
+			ReadTimeout: getDuration("MJAYNRI_READ_TIMEOUT", 15*time.Second),
 			// WriteTimeout à 0 = aucun timeout d'écriture.
-		// Obligatoire pour le streaming SSE : les grands modèles peuvent mettre
-		// plusieurs minutes à générer une réponse. La déconnexion du client est
-		// gérée par l'annulation du context.Context dans chaque handler.
-		WriteTimeout: getDuration("MJAYNRI_WRITE_TIMEOUT", 0),
+			// Obligatoire pour le streaming SSE : les grands modèles peuvent mettre
+			// plusieurs minutes à générer une réponse. La déconnexion du client est
+			// gérée par l'annulation du context.Context dans chaque handler.
+			WriteTimeout: getDuration("MJAYNRI_WRITE_TIMEOUT", 0),
 		},
 		LLM: LLMConfig{
 			OllamaURL:    getEnv("MJAYNRI_OLLAMA_URL", "http://localhost:11434"),

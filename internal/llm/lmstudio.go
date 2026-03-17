@@ -31,7 +31,7 @@ func NewLMStudioProvider(baseURL, model string, timeout time.Duration) *LMStudio
 	}
 }
 
-func (l *LMStudioProvider) Name() string     { return "LM Studio" }
+func (l *LMStudioProvider) Name() string      { return "LM Studio" }
 func (l *LMStudioProvider) ModelName() string { return l.model }
 func (l *LMStudioProvider) BaseURL() string   { return l.baseURL }
 

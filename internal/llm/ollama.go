@@ -30,7 +30,7 @@ func NewOllamaProvider(baseURL, model string, timeout time.Duration) *OllamaProv
 	}
 }
 
-func (o *OllamaProvider) Name() string     { return "Ollama" }
+func (o *OllamaProvider) Name() string      { return "Ollama" }
 func (o *OllamaProvider) ModelName() string { return o.model }
 func (o *OllamaProvider) BaseURL() string   { return o.baseURL }
 
