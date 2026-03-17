@@ -13,12 +13,12 @@ import (
 // StatusResponse est la réponse JSON de GET /api/status.
 // Utilisée par le badge de connexion pour les mises à jour en temps réel.
 type StatusResponse struct {
-	Status    string   `json:"status"`     // "connected" | "detecting" | "disconnected"
-	Color     string   `json:"color"`      // "green" | "orange" | "red"
-	Provider  string   `json:"provider"`   // Nom du provider, ex : "Ollama"
-	Model     string   `json:"model"`      // Modèle actif, ex : "llama3.2:3b"
-	Models    []string `json:"models"`     // Tous les modèles disponibles
-	BaseURL   string   `json:"base_url"`   // URL du serveur
+	Status   string   `json:"status"`   // "connected" | "detecting" | "disconnected"
+	Color    string   `json:"color"`    // "green" | "orange" | "red"
+	Provider string   `json:"provider"` // Nom du provider, ex : "Ollama"
+	Model    string   `json:"model"`    // Modèle actif, ex : "llama3.2:3b"
+	Models   []string `json:"models"`   // Tous les modèles disponibles
+	BaseURL  string   `json:"base_url"` // URL du serveur
 }
 
 // Status retourne l'état courant de la connexion IA en JSON.

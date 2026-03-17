@@ -32,7 +32,7 @@ func New(cfg config.ServerConfig, manager *llm.Manager) *Server {
 
 	// Middlewares globaux
 	engine.Use(gin.Recovery())              // Récupère les panics
-	engine.Use(loggerMiddleware())           // Log structuré des requêtes
+	engine.Use(loggerMiddleware())          // Log structuré des requêtes
 	engine.Use(securityHeadersMiddleware()) // En-têtes de sécurité HTTP
 
 	// Injection des handlers avec leurs dépendances

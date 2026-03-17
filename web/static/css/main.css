@@ -30,6 +30,8 @@
 
 /* ── Reset minimal ────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* L'attribut [hidden] doit l'emporter sur display:flex/grid des composants */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   font-family: var(--font-sans);
@@ -520,6 +522,27 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Bouton Stop (visible uniquement pendant le streaming) ── */
+.chat-input__stop {
+  width: 44px;
+  height: 44px;
+  background: var(--color-red);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.2s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.chat-input__stop:hover  { background: #dc2626; }
+.chat-input__stop:active { transform: scale(0.95); }
 
 /* ── Message d'erreur ─────────────────────────────────────── */
 .message--error .message__bubble {
