@@ -82,9 +82,7 @@ func infoToStatusResponse(info llm.ProviderInfo) StatusResponse {
 	case llm.StatusConnected:
 		resp.Color = "green"
 		resp.Provider = info.Name
-		if len(info.Models) > 0 {
-			resp.Model = info.Models[0]
-		}
+		resp.Model = info.ActiveModel // Modèle réellement actif, pas forcément le premier de la liste
 	case llm.StatusDetecting:
 		resp.Color = "orange"
 		resp.Provider = "Détection…"
