@@ -23,6 +23,7 @@ const statusDot    = document.getElementById('status-dot');
 const statusLabel  = document.getElementById('status-label');
 const modelSelect  = document.getElementById('model-select');
 const refreshBtn   = document.getElementById('refresh-btn');
+const stopBtn      = document.getElementById('stop-btn');
 
 /** Historique de la conversation envoyé à l'API à chaque tour. */
 const conversation = [];
@@ -30,10 +31,14 @@ const conversation = [];
 /** Indique si un streaming est en cours (bloque l'envoi concurrent). */
 let isStreaming = false;
 
+/** AbortController du fetch SSE courant — null quand aucun stream n'est actif. */
+let abortController = null;
+
 // ── Initialisation ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   setupTextarea();
   setupForm();
+  setupStopButton();
   setupRefresh();
   setupModelSelect();
   pollStatus();        // Premier check du statut au chargement
@@ -75,7 +80,8 @@ async function submitMessage() {
   // Effacer et réinitialiser la saisie
   textarea.value = '';
   autoResize();
-  setInputDisabled(true);
+  isStreaming = true;
+  setInputDisabled(true); // Masque Envoyer, affiche Stop
 
   // Supprimer l'écran de bienvenue au premier message
   const welcome = document.querySelector('.chat-welcome');
@@ -95,9 +101,10 @@ async function submitMessage() {
   } catch (err) {
     showError(aiMessageEl, err.message);
   } finally {
+    isStreaming = false;
     aiMessageEl.querySelector('.message__bubble').classList.remove('streaming');
     showTyping(false);
-    setInputDisabled(false);
+    setInputDisabled(false); // Masque Stop, affiche Envoyer
     textarea.focus();
   }
 }
@@ -112,73 +119,86 @@ async function submitMessage() {
  * @param {HTMLElement} aiEl - Élément du message IA à remplir
  */
 async function streamResponse(aiEl) {
-  isStreaming = true;
   const bubble = aiEl.querySelector('.message__bubble');
   let fullContent = '';
 
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: conversation }),
-  });
+  // Un AbortController par requête — permet d'annuler via le bouton Stop ou Échap.
+  abortController = new AbortController();
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
-    throw new Error(data.error || `HTTP ${response.status}`);
-  }
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: conversation }),
+      signal: abortController.signal,
+    });
 
-  // Lire le flux SSE ligne par ligne
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
 
-  // Suivi du type d'événement SSE courant (persiste entre les lectures)
-  let pendingEvent = null;
+    // Lire le flux SSE ligne par ligne
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    // Suivi du type d'événement SSE courant (persiste entre les lectures)
+    let pendingEvent = null;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop(); // Garder la ligne incomplète en buffer
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    for (const line of lines) {
-      // Ligne "event: <type>" → mémoriser le type, attendre la ligne data
-      if (line.startsWith('event: ')) {
-        pendingEvent = line.slice(7).trim();
-        continue;
-      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Garder la ligne incomplète en buffer
 
-      // Ligne "data: <payload>" → traiter selon le type d'événement en attente
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-
-        if (pendingEvent === 'done') {
-          isStreaming = false;
-          conversation.push({ role: 'assistant', content: fullContent });
-          return;
+      for (const line of lines) {
+        // Ligne "event: <type>" → mémoriser le type, attendre la ligne data
+        if (line.startsWith('event: ')) {
+          pendingEvent = line.slice(7).trim();
+          continue;
         }
 
-        if (pendingEvent === 'error') {
-          isStreaming = false;
-          throw new Error(data || 'Erreur de streaming IA');
-        }
+        // Ligne "data: <payload>" → traiter selon le type d'événement en attente
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
 
-        if (pendingEvent === 'chunk') {
-          fullContent += data;
-          bubble.replaceChildren(renderMarkdown(fullContent));
-          scrollToBottom();
-        }
+          if (pendingEvent === 'done') {
+            conversation.push({ role: 'assistant', content: fullContent });
+            return;
+          }
 
-        pendingEvent = null;
+          if (pendingEvent === 'error') {
+            throw new Error(data || 'Erreur de streaming IA');
+          }
+
+          if (pendingEvent === 'chunk') {
+            fullContent += data;
+            bubble.replaceChildren(renderMarkdown(fullContent));
+            scrollToBottom();
+          }
+
+          pendingEvent = null;
+        }
       }
     }
-  }
 
-  isStreaming = false;
-  if (fullContent) {
-    conversation.push({ role: 'assistant', content: fullContent });
+    // Fin propre du canal sans event: done (stream tronqué côté serveur)
+    if (fullContent) {
+      conversation.push({ role: 'assistant', content: fullContent });
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      // Arrêt volontaire (bouton Stop ou Échap) — pas d'erreur affichée.
+      // La réponse partielle reste visible mais n'est pas sauvegardée dans
+      // l'historique pour éviter que le modèle reboucle sur un contexte tronqué.
+      return;
+    }
+    throw err; // Propager les vraies erreurs vers submitMessage
+  } finally {
+    abortController = null;
   }
 }
 
@@ -217,10 +237,12 @@ function showError(aiEl, message) {
   aiEl.querySelector('.message__bubble').textContent = '⚠ Erreur : ' + message;
 }
 
-/** Active ou désactive le formulaire de saisie pendant le streaming. */
+/** Active/désactive la zone de saisie et bascule entre Send ↔ Stop. */
 function setInputDisabled(disabled) {
   textarea.disabled = disabled;
   sendBtn.disabled = disabled;
+  sendBtn.hidden   = disabled;  // Masqué pendant le streaming
+  stopBtn.hidden   = !disabled; // Visible pendant le streaming
 }
 
 /** Affiche ou masque l'indicateur "l'IA écrit…". */
@@ -354,6 +376,22 @@ function setupModelSelect() {
       modelSelect.classList.remove('switching');
     }
   });
+}
+
+/**
+ * Branche le bouton Stop et le raccourci Échap.
+ * Un clic (ou Échap) annule le fetch SSE en cours via AbortController.
+ */
+function setupStopButton() {
+  stopBtn.addEventListener('click', stopStreaming);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isStreaming) stopStreaming();
+  });
+}
+
+/** Annule le streaming en cours si un AbortController est actif. */
+function stopStreaming() {
+  if (abortController) abortController.abort();
 }
 
 function setupRefresh() {
