@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "MJAYNRI",
-      "runtimeExecutable": "go",
-      "runtimeArgs": ["run", "./cmd/mjaynri/main.go"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "MJAYNRI_PORT=8081 go run ./cmd/mjaynri/main.go"],
       "port": 8081,
+      "autoPort": false,
       "cwd": "/Users/anthonyduprez/Documents/GitHub/MJAYNRI"
     }
   ]
