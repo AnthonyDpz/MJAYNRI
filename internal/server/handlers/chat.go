@@ -48,37 +48,49 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	// Configurer les en-têtes SSE
+	// Démarrer le streaming AVANT de poser les en-têtes SSE.
+	// En cas d'erreur ici (provider indisponible, modèle refusé…), on peut encore
+	// retourner un JSON proper — dès qu'on écrit en mode SSE il est trop tard.
+	stream, err := provider.Chat(c.Request.Context(), req.Messages)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Configurer les en-têtes SSE (uniquement après que le stream est prêt)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // Désactive le buffering nginx si présent
 
-	// Démarrer le streaming depuis le provider
-	stream, err := provider.Chat(c.Request.Context(), req.Messages)
-	if err != nil {
-		sendSSEEvent(c.Writer, "error", err.Error())
-		return
+	// Relayer les chunks au client via SSE.
+	// On n'utilise PAS c.Stream() de Gin car il repose sur CloseNotify() (déprécié
+	// depuis Go 1.11 et instable sous Go 1.22). On utilise à la place un select
+	// bloquant sur le context et le canal de chunks : lorsque le client ferme la
+	// connexion, ctx.Done() est fermé et la boucle s'arrête proprement.
+	ctx := c.Request.Context()
+	w := c.Writer
+	for {
+		select {
+		case <-ctx.Done():
+			// Le client a fermé la connexion — on arrête proprement.
+			return
+		case chunk, ok := <-stream:
+			if !ok {
+				// Canal fermé normalement (stream terminé)
+				return
+			}
+			if chunk.Err != nil {
+				sendSSEEvent(w, "error", chunk.Err.Error())
+				return
+			}
+			if chunk.Done {
+				sendSSEEvent(w, "done", `{"finish":"stop"}`)
+				return
+			}
+			sendSSEEvent(w, "chunk", chunk.Content)
+		}
 	}
-
-	// Relayer les chunks au client
-	c.Stream(func(w io.Writer) bool {
-		chunk, ok := <-stream
-		if !ok {
-			// Canal fermé normalement
-			return false
-		}
-		if chunk.Err != nil {
-			sendSSEEvent(w, "error", chunk.Err.Error())
-			return false
-		}
-		if chunk.Done {
-			sendSSEEvent(w, "done", `{"finish":"stop"}`)
-			return false
-		}
-		sendSSEEvent(w, "chunk", chunk.Content)
-		return true
-	})
 }
 
 // sendSSEEvent écrit un événement SSE formaté dans w.

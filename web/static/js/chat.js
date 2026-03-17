@@ -132,6 +132,9 @@ async function streamResponse(aiEl) {
   const decoder = new TextDecoder();
   let buffer = '';
 
+  // Suivi du type d'événement SSE courant (persiste entre les lectures)
+  let pendingEvent = null;
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -141,22 +144,34 @@ async function streamResponse(aiEl) {
     buffer = lines.pop(); // Garder la ligne incomplète en buffer
 
     for (const line of lines) {
-      if (line.startsWith('event: chunk')) continue;
-      if (line.startsWith('data: ') && !line.includes('"finish"')) {
-        fullContent += line.slice(6); // Retirer le préfixe "data: "
-        // Re-rendu markdown à chaque chunk (inclut <think> + formatage)
-        bubble.replaceChildren(renderMarkdown(fullContent));
-        scrollToBottom();
+      // Ligne "event: <type>" → mémoriser le type, attendre la ligne data
+      if (line.startsWith('event: ')) {
+        pendingEvent = line.slice(7).trim();
+        continue;
       }
-      if (line.startsWith('event: done')) {
-        isStreaming = false;
-        // Enregistrer la réponse complète dans l'historique
-        conversation.push({ role: 'assistant', content: fullContent });
-        return;
-      }
-      if (line.startsWith('event: error')) {
-        isStreaming = false;
-        throw new Error('Erreur de streaming IA');
+
+      // Ligne "data: <payload>" → traiter selon le type d'événement en attente
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+
+        if (pendingEvent === 'done') {
+          isStreaming = false;
+          conversation.push({ role: 'assistant', content: fullContent });
+          return;
+        }
+
+        if (pendingEvent === 'error') {
+          isStreaming = false;
+          throw new Error(data || 'Erreur de streaming IA');
+        }
+
+        if (pendingEvent === 'chunk') {
+          fullContent += data;
+          bubble.replaceChildren(renderMarkdown(fullContent));
+          scrollToBottom();
+        }
+
+        pendingEvent = null;
       }
     }
   }
