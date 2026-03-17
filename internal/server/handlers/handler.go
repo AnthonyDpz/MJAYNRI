@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"html/template"
+	"io/fs"
 	"net/http"
 
 	"github.com/AnthonyDpz/MJAYNRI/internal/llm"
@@ -39,6 +40,12 @@ func (h *Handler) WithResolver(r *llm.Resolver) *Handler {
 }
 
 // StaticFiles retourne le http.FileSystem pour les assets statiques embarqués.
+// fs.Sub retire le préfixe "static/" du embed.FS afin que les URLs
+// /static/css/main.css soient correctement résolues vers css/main.css.
 func (h *Handler) StaticFiles() http.FileSystem {
-	return http.FS(web.StaticFS)
+	sub, err := fs.Sub(web.StaticFS, "static")
+	if err != nil {
+		panic("web: impossible d'accéder au sous-dossier static: " + err.Error())
+	}
+	return http.FS(sub)
 }

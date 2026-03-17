@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "MJAYNRI",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "./cmd/mjaynri/main.go"],
+      "port": 8081,
+      "cwd": "/Users/anthonyduprez/Documents/GitHub/MJAYNRI"
+    }
+  ]
+}
