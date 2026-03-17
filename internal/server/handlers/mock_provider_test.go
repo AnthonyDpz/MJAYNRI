@@ -16,7 +16,7 @@ type mockProvider struct {
 	pingOK bool
 }
 
-func (m *mockProvider) Name() string     { return m.name }
+func (m *mockProvider) Name() string      { return m.name }
 func (m *mockProvider) ModelName() string { return m.model }
 func (m *mockProvider) BaseURL() string   { return m.url }
 

@@ -10,10 +10,10 @@ import (
 // Manager gère le provider LLM actif et permet de le changer à chaud depuis l'IHM.
 // Il est thread-safe : plusieurs goroutines peuvent appeler ses méthodes simultanément.
 type Manager struct {
-	mu         sync.RWMutex
-	active     Provider
-	available  []DetectedProvider
-	status     Status
+	mu        sync.RWMutex
+	active    Provider
+	available []DetectedProvider
+	status    Status
 }
 
 // NewManager crée un Manager à partir des providers détectés par le Resolver.
